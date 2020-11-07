@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   sensor_msgs
   std_srvs
+  dynamic_reconfigure
 )
 
 ## Find system libraries
@@ -49,21 +50,11 @@ find_package(Boost REQUIRED)
 ## Declare ROS dynamic reconfigure parameters ##
 ################################################
 
-## To declare and build dynamic reconfigure parameters within this
-## package, follow these steps:
-## * In the file package.xml:
-##   * add a build_depend and a exec_depend tag for "dynamic_reconfigure"
-## * In this file (CMakeLists.txt):
-##   * add "dynamic_reconfigure" to
-##     find_package(catkin REQUIRED COMPONENTS ...)
-##   * uncomment the "generate_dynamic_reconfigure_options" section below
-##     and list every .cfg file to be processed
-
-## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+#add dynamic reconfigure api
+#find_package(catkin REQUIRED dynamic_reconfigure)
+generate_dynamic_reconfigure_options(
+        cfg/dynamic_params.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -79,8 +70,12 @@ catkin_package(
     include
   ${EIGEN3_INCLUDE_DIR}
   ${BOOST_INCLUDE_DIR}
-#  LIBRARIES x2_description
-#  CATKIN_DEPENDS geometry_msgs sensor_msgs xacro
+  CATKIN_DEPENDS
+    roscpp
+    geometry_msgs
+    sensor_msgs
+    std_srvs
+    dynamic_reconfigure
 #  DEPENDS system_lib
 )
 
@@ -128,6 +123,9 @@ include_directories(
  target_link_libraries(${PROJECT_NAME}
    ${catkin_LIBRARIES}
  )
+
+# make sure configure headers are built before any node using them
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 
 #############
 ## Install ##

@@ -1,0 +1,3 @@
+multi_robot_interaction:
+  name_spaces: ["m1_x", "m1_y"]
+  dof: 1 # for now it is required that both robots have same DoF

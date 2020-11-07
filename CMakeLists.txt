@@ -11,10 +11,12 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   geometry_msgs
   sensor_msgs
+  std_srvs
 )
 
 ## Find system libraries
 find_package(Eigen3 REQUIRED)
+find_package(Boost REQUIRED)
 
 ## Generate messages in the 'msg' folder
 # add_message_files(
@@ -76,6 +78,7 @@ catkin_package(
   INCLUDE_DIRS
     include
   ${EIGEN3_INCLUDE_DIR}
+  ${BOOST_INCLUDE_DIR}
 #  LIBRARIES x2_description
 #  CATKIN_DEPENDS geometry_msgs sensor_msgs xacro
 #  DEPENDS system_lib
@@ -91,6 +94,7 @@ include_directories(
  include
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
+  ${BOOST_INCLUDE_DIR}
 )
 
 ## Declare a C++ library

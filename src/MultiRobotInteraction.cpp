@@ -16,6 +16,7 @@ void MultiRobotInteraction::initialize() {
         ros::shutdown();
     }
     numberOfRobots_ = nameSpaces_.size();
+
     // sizing vectors
     jointStateSubscribers_ = std::vector<ros::Subscriber>(numberOfRobots_);
     jointCommandPublishers_ = std::vector<ros::Publisher>(numberOfRobots_);
@@ -57,7 +58,7 @@ void MultiRobotInteraction::initialize() {
 }
 
 void MultiRobotInteraction::advance() {
-    if(!startInteractionFlag_) return;
+    if(interaction_mode_ == 0) return; // no interaction
 
     if(interaction_mode_ == 1){ // robot 2 mimics robot 1's position
         for(int dof = 0; dof<robotsDoF_; dof++){
@@ -65,7 +66,7 @@ void MultiRobotInteraction::advance() {
         }
         publishJointCommands();
     }
-    else if(interaction_mode_ == 2){ // virtual haptic spring
+    else if(interaction_mode_ == 2){ // virtual haptic spring in the interaction level
 
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) =
@@ -76,6 +77,18 @@ void MultiRobotInteraction::advance() {
 
         publishInteractionEffortCommand();
     }
+
+    else if(interaction_mode_ == 3){ // virtual haptic spring in the joint level
+
+        for(int dof = 0; dof<robotsDoF_; dof++){
+            jointTorqueCommandMatrix_(dof, 0) =
+                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0));
+            jointTorqueCommandMatrix_(dof, 1) =
+                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1));
+        }
+
+        publishJointCommands();
+    }
 }
 
 void MultiRobotInteraction::exit() {
@@ -85,7 +98,6 @@ void MultiRobotInteraction::exit() {
 void MultiRobotInteraction::jointStateCallback(const sensor_msgs::JointStateConstPtr & msg, int robot_id) {
 
     for(int dof = 0; dof< robotsDoF_; dof++){
-        std::cout<<msg->position[dof]<<std::endl;
         jointPositionMatrix_(dof, robot_id) = msg->position[dof];
         jointVelocityMatrix_(dof, robot_id) = msg->velocity[dof];
         jointTorqueMatrix_(dof, robot_id) = msg->effort[dof];

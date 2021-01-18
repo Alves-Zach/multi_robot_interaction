@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 
     MultiRobotInteraction multiRobotInteraction(nodeHandle);
     multiRobotInteraction.initialize();
-    ros::Rate rate(400); // ROS Rate at 400Hz
+    ros::Rate rate(500); // ROS Rate at 400Hz
     while(ros::ok()){
         multiRobotInteraction.advance();
         ros::spinOnce();

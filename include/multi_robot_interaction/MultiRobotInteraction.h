@@ -38,10 +38,15 @@ private:
 
     ros::NodeHandle &nodeHandle_;
 
+    std::chrono::steady_clock::time_point time0; // time when program started
+    ros::Time rosTime0_;
+
     bool startInteractionFlag_;
     int interaction_mode_;
-    double k_interaction_;
-    double c_interaction_;
+    double k_interaction_; // stiffness of the interaction
+    double c_interaction_; // damping constant of the interaction
+    double A_desired_pos_; // Amplitude of the desired position
+    double f_desired_pos; // frequency of the desired position
 
     //vector of subscribers to subscribe joint states of the robots
     std::vector<ros::Subscriber> jointStateSubscribers_;

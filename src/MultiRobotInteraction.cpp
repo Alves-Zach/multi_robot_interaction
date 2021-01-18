@@ -55,9 +55,15 @@ void MultiRobotInteraction::initialize() {
     jointVelocityCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     jointTorqueCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+
+    time0 = std::chrono::steady_clock::now(); // getting the time before program starts
+    rosTime0_ = ros::Time::now();
 }
 
 void MultiRobotInteraction::advance() {
+    double time = std::chrono::duration_cast<std::chrono::milliseconds>
+            (std::chrono::steady_clock::now() - time0).count()/1000.0; // time in seconds
+
     if(interaction_mode_ == 0) return; // no interaction
 
     if(interaction_mode_ == 1){ // robot 2 mimics robot 1's position
@@ -70,12 +76,18 @@ void MultiRobotInteraction::advance() {
 
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) =
-                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0));
+                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1)) +
+                    c_interaction_*(jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
             interactionEffortCommandMatrix_(dof, 1) =
-                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1));
+                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
+                    c_interaction_*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
+
+            jointPositionCommandMatrix_(dof, 0) = A_desired_pos_*sin(2*M_PI*f_desired_pos*time);
+            jointPositionCommandMatrix_(dof, 1) = A_desired_pos_*sin(2*M_PI*f_desired_pos*time);
         }
 
         publishInteractionEffortCommand();
+        publishJointCommands();
     }
 
     else if(interaction_mode_ == 3){ // virtual haptic spring in the joint level
@@ -122,15 +134,23 @@ bool MultiRobotInteraction::startExoServiceCallback(std_srvs::SetBool::Request &
 
 void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_paramsConfig &config, uint32_t level) {
 
+    if(interaction_mode_ != config.interaction_mode){
+        ROS_INFO_STREAM("MODE IS CHANGED TO: "<< config.interaction_mode);
+        time0 = std::chrono::steady_clock::now(); // reseting the time before switching to the new interaction mode
+    }
+
     interaction_mode_ = config.interaction_mode;
     k_interaction_ = config.k_interaction;
     c_interaction_ = config.c_interaction;
+    A_desired_pos_ = config.Amplitude;
+    f_desired_pos = config.frequency;
     return;
 }
 
 void MultiRobotInteraction::publishJointCommands() {
 
     for(int robot = 0; robot<numberOfRobots_; robot++){
+        jointCommandMsgs_[robot].header.stamp = ros::Time::now();
         jointCommandMsgs_[robot].position.resize(robotsDoF_);
         jointCommandMsgs_[robot].velocity.resize(robotsDoF_);
         jointCommandMsgs_[robot].effort.resize(robotsDoF_);

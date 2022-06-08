@@ -10,7 +10,8 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
 
 void MultiRobotInteraction::initialize() {
     // gets the namespace parameters from the parameter server
-    if(!nodeHandle_.getParam("name_spaces", nameSpaces_) || !nodeHandle_.getParam("dof", robotsDoF_)){
+    if(!nodeHandle_.getParam("name_spaces", nameSpaces_) || !nodeHandle_.getParam("dof", robotsDoF_) ||
+            !nodeHandle_.getParam("joint_indexes", jointIndexes_) ){
         ROS_ERROR("Failed to get parameter from server.");
         ROS_ERROR("Node is killed");
         ros::shutdown();
@@ -30,7 +31,7 @@ void MultiRobotInteraction::initialize() {
         jointStateSubscribers_[i] = nodeHandle_.subscribe<sensor_msgs::JointState>(jointStateSubscribersTopicName, 1,
                               boost::bind(&MultiRobotInteraction::jointStateCallback, this, _1, i));
 
-        std::string jointCommandPublishersTopicName = "/" + nameSpaces_[i] + "/joint_commands";
+        std::string jointCommandPublishersTopicName = "/" + nameSpaces_[i] + "/target_state";
         jointCommandPublishers_[i] = nodeHandle_.advertise<sensor_msgs::JointState>
                 (jointCommandPublishersTopicName, 1);
 
@@ -58,49 +59,81 @@ void MultiRobotInteraction::initialize() {
 
     time0 = std::chrono::steady_clock::now(); // getting the time before program starts
     rosTime0_ = ros::Time::now();
+
+    for (unsigned i = 0; i < 3; i++)
+    {
+        randomTrajectoryPhase_[i] = rand()*2*M_PI;
+    }
+
 }
 
 void MultiRobotInteraction::advance() {
     double time = std::chrono::duration_cast<std::chrono::milliseconds>
             (std::chrono::steady_clock::now() - time0).count()/1000.0; // time in seconds
 
+    for(int dof = 0; dof<robotsDoF_; dof++) {
+
+        double multiSinPos = scale_desired_pos_*(0.33*sin(0.5*2*M_PI*(time)+randomTrajectoryPhase_[0]) +
+                              0.33*sin(0.2*2*M_PI*(time)+randomTrajectoryPhase_[1]) +
+                              0.33*sin(0.16*2*M_PI*(time)+randomTrajectoryPhase_[2])) + offset_desired_pos_;
+
+        double multiSinVel = scale_desired_pos_*(0.33*0.5*2*M_PI*cos(0.5*2*M_PI*(time)+randomTrajectoryPhase_[0]) +
+                             0.33*0.2*2*M_PI*cos(0.2*2*M_PI*(time)+randomTrajectoryPhase_[1]) +
+                             0.33*0.16*2*M_PI*cos(0.16*2*M_PI*(time)+randomTrajectoryPhase_[2]));
+
+        jointPositionCommandMatrix_(dof, 0) = multiSinPos;
+        jointPositionCommandMatrix_(dof, 1) = multiSinPos;
+
+        jointVelocityCommandMatrix_(dof, 0) = multiSinVel;
+        jointVelocityCommandMatrix_(dof, 1) = multiSinVel;
+
+//        jointPositionCommandMatrix_(dof, 0) =
+//                A_desired_pos_ * sin(2 * M_PI * f_desired_pos * time) + offset_desired_pos_;
+//        jointPositionCommandMatrix_(dof, 1) =
+//                A_desired_pos_ * sin(2 * M_PI * f_desired_pos * time) + offset_desired_pos_;
+//
+//        jointVelocityCommandMatrix_(dof, 0) =
+//                A_desired_pos_ * 2 * M_PI * f_desired_pos * cos(2 * M_PI * f_desired_pos * time);
+//        jointVelocityCommandMatrix_(dof, 1) =
+//                A_desired_pos_ * 2 * M_PI * f_desired_pos * cos(2 * M_PI * f_desired_pos * time);
+    }
+
+    publishJointCommands();
+
     if(interaction_mode_ == 0) return; // no interaction
 
-    if(interaction_mode_ == 1){ // robot 2 mimics robot 1's position
-        for(int dof = 0; dof<robotsDoF_; dof++){
-            jointPositionCommandMatrix_(dof, 1) = jointPositionMatrix_(dof, 0);
-        }
-        publishJointCommands();
-    }
-    else if(interaction_mode_ == 2){ // virtual haptic spring in the interaction level
+//    if(interaction_mode_ == 1){ // robot 2 mimics robot 1's position
+//        for(int dof = 0; dof<robotsDoF_; dof++){
+//            jointPositionCommandMatrix_(dof, 1) = jointPositionMatrix_(dof, 0);
+//        }
+//        publishJointCommands();
+//    }
+    else if(interaction_mode_ == 1){ // dyad
 
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) =
-                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1)) +
+                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - neutral_length_) +
                     c_interaction_*(jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
-            interactionEffortCommandMatrix_(dof, 1) =
-                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
-                    c_interaction_*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
+            interactionEffortCommandMatrix_(dof, 1) = -interactionEffortCommandMatrix_(dof, 0);
+//                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
+//                    c_interaction_*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
 
-            jointPositionCommandMatrix_(dof, 0) = A_desired_pos_*sin(2*M_PI*f_desired_pos*time);
-            jointPositionCommandMatrix_(dof, 1) = A_desired_pos_*sin(2*M_PI*f_desired_pos*time);
         }
 
         publishInteractionEffortCommand();
-        publishJointCommands();
     }
 
-    else if(interaction_mode_ == 3){ // virtual haptic spring in the joint level
-
-        for(int dof = 0; dof<robotsDoF_; dof++){
-            jointTorqueCommandMatrix_(dof, 0) =
-                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0));
-            jointTorqueCommandMatrix_(dof, 1) =
-                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1));
-        }
-
-        publishJointCommands();
-    }
+//    else if(interaction_mode_ == 3){ // virtual haptic spring in the joint level
+//
+//        for(int dof = 0; dof<robotsDoF_; dof++){
+//            jointTorqueCommandMatrix_(dof, 0) =
+//                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0));
+//            jointTorqueCommandMatrix_(dof, 1) =
+//                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1));
+//        }
+//
+//        publishJointCommands();
+//    }
 }
 
 void MultiRobotInteraction::exit() {
@@ -109,10 +142,13 @@ void MultiRobotInteraction::exit() {
 
 void MultiRobotInteraction::jointStateCallback(const sensor_msgs::JointStateConstPtr & msg, int robot_id) {
 
+    int gain = 1;
+    if(robot_id == 0) gain = -1; // because knee motion is to negative
+
     for(int dof = 0; dof< robotsDoF_; dof++){
-        jointPositionMatrix_(dof, robot_id) = msg->position[dof];
-        jointVelocityMatrix_(dof, robot_id) = msg->velocity[dof];
-        jointTorqueMatrix_(dof, robot_id) = msg->effort[dof];
+        jointPositionMatrix_(dof, robot_id) = gain * msg->position[jointIndexes_[robot_id]];
+        jointVelocityMatrix_(dof, robot_id) = gain * msg->velocity[jointIndexes_[robot_id]];
+        jointTorqueMatrix_(dof, robot_id) = gain * msg->effort[jointIndexes_[robot_id]];
     }
 }
 
@@ -140,10 +176,13 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
     }
 
     interaction_mode_ = config.interaction_mode;
-    k_interaction_ = config.k_interaction;
-    c_interaction_ = config.c_interaction;
-    A_desired_pos_ = config.Amplitude;
-    f_desired_pos = config.frequency;
+    k_interaction_ = config.stiffness;
+    c_interaction_ = config.damping;
+    neutral_length_ = deg2rad(config.neutral_length);
+//    A_desired_pos_ = deg2rad(config.Amplitude);
+//    f_desired_pos = config.frequency;
+    offset_desired_pos_ = deg2rad(config.offset);
+    scale_desired_pos_ = config.scale;
     return;
 }
 

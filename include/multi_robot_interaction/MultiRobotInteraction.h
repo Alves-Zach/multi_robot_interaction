@@ -27,6 +27,9 @@
 #include <dynamic_reconfigure/server.h>
 #include <multi_robot_interaction/dynamic_paramsConfig.h>
 
+#define deg2rad(deg) ((deg)*M_PI / 180.0)
+#define rad2deg(rad) ((rad)*180.0 / M_PI)
+
 class MultiRobotInteraction {
 public:
     MultiRobotInteraction(ros::NodeHandle &nodeHandle);
@@ -45,8 +48,11 @@ private:
     int interaction_mode_;
     double k_interaction_; // stiffness of the interaction
     double c_interaction_; // damping constant of the interaction
+    double neutral_length_; // neutral length of the spring
     double A_desired_pos_; // Amplitude of the desired position
     double f_desired_pos; // frequency of the desired position
+    double offset_desired_pos_; // offset of the desired position
+    double scale_desired_pos_;
 
     //vector of subscribers to subscribe joint states of the robots
     std::vector<ros::Subscriber> jointStateSubscribers_;
@@ -71,6 +77,7 @@ private:
 
     // vector of namespaces that holds the namespace of the robots in concern
     std::vector<std::string> nameSpaces_;
+    std::vector<int> jointIndexes_;
     int robotsDoF_;
     int numberOfRobots_;
 
@@ -83,6 +90,8 @@ private:
     Eigen::MatrixXd jointTorqueCommandMatrix_;
 
     Eigen::MatrixXd interactionEffortCommandMatrix_;
+
+    float randomTrajectoryPhase_[3];
 
     void publishJointCommands();
     void publishInteractionEffortCommand();

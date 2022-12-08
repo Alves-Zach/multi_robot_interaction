@@ -77,7 +77,6 @@ private:
 
     // vector of namespaces that holds the namespace of the robots in concern
     std::vector<std::string> nameSpaces_;
-    std::vector<int> jointIndexes_;
     int robotsDoF_;
     int numberOfRobots_;
 
@@ -91,9 +90,6 @@ private:
 
     Eigen::MatrixXd interactionEffortCommandMatrix_;
 
-    float randomTrajectoryPhase_[3];
-
-    void publishJointCommands();
     void publishInteractionEffortCommand();
 };
 

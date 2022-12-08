@@ -1,4 +1,3 @@
 multi_robot_interaction:
-  name_spaces: ["x2_sralab", "m1_y"]
-  dof: 1 # for now it is required that both robots have same DoF
-  joint_indexes: [3, 0] # index of the controlled dof
+  name_spaces: ["X2_SRALAB_A", "X2_SRALAB_B"]
+  dof: 5 # for now it is required that both robots have same DoF

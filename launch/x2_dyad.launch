@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-  <node name="x2_dyad" pkg="multi_robot_interaction" type="multi_robot_interaction">
+  <node name="x2_dyad" pkg="multi_robot_interaction" type="multi_robot_interaction" output="screen">
     <rosparam command="load" file="$(find multi_robot_interaction)/param/robot_params.yaml" />
   </node>
 </launch>

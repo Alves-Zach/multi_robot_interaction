@@ -5,10 +5,6 @@
 MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
     nodeHandle_(nodeHandle)
 {
-
-}
-
-void MultiRobotInteraction::initialize() {
     // gets the namespace parameters from the parameter server
     if(!nodeHandle_.getParam("name_spaces", nameSpaces_) || !nodeHandle_.getParam("dof", robotsDoF_)){
         ROS_ERROR("Failed to get parameter from server.");
@@ -16,6 +12,23 @@ void MultiRobotInteraction::initialize() {
         ros::shutdown();
     }
     numberOfRobots_ = nameSpaces_.size();
+
+    // initializing joint and interaction matrixes
+    jointPositionMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    jointVelocityMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    jointTorqueMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    jointPositionCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    jointVelocityCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    jointTorqueCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+
+    k_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
+    c_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
+    neutral_length_ = Eigen::VectorXd::Zero(robotsDoF_);
+
+}
+
+void MultiRobotInteraction::initialize() {
 
     // sizing vectors
     jointStateSubscribers_ = std::vector<ros::Subscriber>(numberOfRobots_);
@@ -41,15 +54,6 @@ void MultiRobotInteraction::initialize() {
     startInteractionService_ = nodeHandle_.advertiseService("start_interaction", &MultiRobotInteraction::startExoServiceCallback, this);
     startInteractionFlag_ = false;
 
-    // initializing joint and interaction matrixes
-    jointPositionMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    jointVelocityMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    jointTorqueMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    jointPositionCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    jointVelocityCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    jointTorqueCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-
     time0 = std::chrono::steady_clock::now(); // getting the time before program starts
     rosTime0_ = ros::Time::now();
 
@@ -62,20 +66,19 @@ void MultiRobotInteraction::advance() {
     if(interaction_mode_ == 0){ // no interaction
         interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     }
-
     else if(interaction_mode_ == 1){ // bi-lateral dyad
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) =
-                    k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - neutral_length_) +
-                    c_interaction_*(jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
+                    k_interaction_(dof)*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - neutral_length_(dof)) +
+                    c_interaction_(dof)*(jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
             interactionEffortCommandMatrix_(dof, 1) = -interactionEffortCommandMatrix_(dof, 0);
         }
     } else if(interaction_mode_ == 2){ // uni-lateral dyad
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) = 0.0;
             interactionEffortCommandMatrix_(dof, 1) =
-                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0) - neutral_length_) +
-                    c_interaction_*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
+                    k_interaction_(dof)*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0) - neutral_length_(dof)) +
+                    c_interaction_(dof)*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
         }
     }
     publishInteractionEffortCommand();
@@ -118,9 +121,21 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
     }
 
     interaction_mode_ = config.interaction_mode;
-    k_interaction_ = config.stiffness;
-    c_interaction_ = config.damping;
-    neutral_length_ = deg2rad(config.neutral_length);
+
+    k_interaction_(0) = config.stiffness_hip;
+    c_interaction_(0) = config.damping_hip;
+    neutral_length_(0) = deg2rad(config.neutral_length_hip);
+    k_interaction_(1) = config.stiffness_knee;
+    c_interaction_(1) = config.damping_knee;
+    neutral_length_(1) = deg2rad(config.neutral_length_knee);
+
+    k_interaction_(2) = k_interaction_(0);
+    c_interaction_(2) = c_interaction_(0);
+    neutral_length_(2) = neutral_length_(0);
+    k_interaction_(3) = k_interaction_(1);
+    c_interaction_(3) = c_interaction_(1);
+    neutral_length_(3) = neutral_length_(1);
+
     return;
 }
 

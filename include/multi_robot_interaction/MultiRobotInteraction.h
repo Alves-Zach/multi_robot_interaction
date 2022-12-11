@@ -46,9 +46,9 @@ private:
 
     bool startInteractionFlag_;
     int interaction_mode_;
-    double k_interaction_; // stiffness of the interaction
-    double c_interaction_; // damping constant of the interaction
-    double neutral_length_; // neutral length of the spring
+    Eigen::VectorXd k_interaction_; // stiffness of the interaction
+    Eigen::VectorXd c_interaction_; // damping constant of the interaction
+    Eigen::VectorXd neutral_length_; // neutral length of the spring
 
     //vector of subscribers to subscribe joint states of the robots
     std::vector<ros::Subscriber> jointStateSubscribers_;

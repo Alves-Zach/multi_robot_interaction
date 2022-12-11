@@ -49,10 +49,6 @@ private:
     double k_interaction_; // stiffness of the interaction
     double c_interaction_; // damping constant of the interaction
     double neutral_length_; // neutral length of the spring
-    double A_desired_pos_; // Amplitude of the desired position
-    double f_desired_pos; // frequency of the desired position
-    double offset_desired_pos_; // offset of the desired position
-    double scale_desired_pos_;
 
     //vector of subscribers to subscribe joint states of the robots
     std::vector<ros::Subscriber> jointStateSubscribers_;

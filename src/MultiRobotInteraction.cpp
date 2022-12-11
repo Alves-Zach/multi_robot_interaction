@@ -28,7 +28,7 @@ void MultiRobotInteraction::initialize() {
         jointStateSubscribers_[i] = nodeHandle_.subscribe<sensor_msgs::JointState>(jointStateSubscribersTopicName, 1,
                               boost::bind(&MultiRobotInteraction::jointStateCallback, this, _1, i));
 
-        std::string interactionEffortCommandPublishersTopicName = "/" + nameSpaces_[i] + "/interaction_effort_commands";
+        std::string interactionEffortCommandPublishersTopicName = "/" + nameSpaces_[i] + "/desired_interaction_torque";
         interactionEffortCommandPublishers_[i] = nodeHandle_.advertise<std_msgs::Float64MultiArray>
                 (interactionEffortCommandPublishersTopicName, 1);
     }
@@ -59,19 +59,26 @@ void MultiRobotInteraction::advance() {
     double time = std::chrono::duration_cast<std::chrono::milliseconds>
             (std::chrono::steady_clock::now() - time0).count()/1000.0; // time in seconds
 
-    if(interaction_mode_ == 0) return; // no interaction
+    if(interaction_mode_ == 0){ // no interaction
+        interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    }
 
-    else if(interaction_mode_ == 1){ // dyad
-
+    else if(interaction_mode_ == 1){ // bi-lateral dyad
         for(int dof = 0; dof<robotsDoF_; dof++){
             interactionEffortCommandMatrix_(dof, 0) =
                     k_interaction_*(jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - neutral_length_) +
                     c_interaction_*(jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
             interactionEffortCommandMatrix_(dof, 1) = -interactionEffortCommandMatrix_(dof, 0);
         }
-
-        publishInteractionEffortCommand();
+    } else if(interaction_mode_ == 2){ // uni-lateral dyad
+        for(int dof = 0; dof<robotsDoF_; dof++){
+            interactionEffortCommandMatrix_(dof, 0) = 0.0;
+            interactionEffortCommandMatrix_(dof, 1) =
+                    k_interaction_*(jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0) - neutral_length_) +
+                    c_interaction_*(jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
+        }
     }
+    publishInteractionEffortCommand();
 }
 
 void MultiRobotInteraction::exit() {
@@ -80,13 +87,10 @@ void MultiRobotInteraction::exit() {
 
 void MultiRobotInteraction::jointStateCallback(const sensor_msgs::JointStateConstPtr & msg, int robot_id) {
 
-    int gain = 1;
-    if(robot_id == 0) gain = -1; // because knee motion is to negative
-
     for(int dof = 0; dof< robotsDoF_; dof++){
-//        jointPositionMatrix_(dof, robot_id) = gain * msg->position[jointIndexes_[robot_id]];
-//        jointVelocityMatrix_(dof, robot_id) = gain * msg->velocity[jointIndexes_[robot_id]];
-//        jointTorqueMatrix_(dof, robot_id) = gain * msg->effort[jointIndexes_[robot_id]];
+        jointPositionMatrix_(dof, robot_id) = msg->position[dof];
+        jointVelocityMatrix_(dof, robot_id) = msg->velocity[dof];
+        jointTorqueMatrix_(dof, robot_id) = msg->effort[dof];
     }
 }
 
@@ -117,10 +121,6 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
     k_interaction_ = config.stiffness;
     c_interaction_ = config.damping;
     neutral_length_ = deg2rad(config.neutral_length);
-//    A_desired_pos_ = deg2rad(config.Amplitude);
-//    f_desired_pos = config.frequency;
-    offset_desired_pos_ = deg2rad(config.offset);
-    scale_desired_pos_ = config.scale;
     return;
 }
 

@@ -2,8 +2,8 @@
  * /file MultiRobotInteraction.h
  * /author Emek Baris Kucuktabak
  * /brief Class to generate haptic interaction between robots
- * /version 0.1
- * /date 2020-10-19
+ * /version 2.1
+ * /date 2022-12-17
  *
  * @copyright Copyright (c) 2020
  *
@@ -46,7 +46,6 @@ private:
     std::chrono::steady_clock::time_point time0; // time when program started
     ros::Time rosTime0_;
 
-    bool startInteractionFlag_;
     int interaction_mode_;
     Eigen::VectorXd k_joint_interaction_; // stiffness of the interaction
     Eigen::VectorXd c_joint_interaction_; // damping constant of the interaction
@@ -71,11 +70,6 @@ private:
     // dynamic reconfigure server and callback
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig> server_;
     void dynReconfCallback(multi_robot_interaction::dynamic_paramsConfig &config, uint32_t level);
-
-    // service server to start or stop the interaction
-    ros::ServiceServer startInteractionService_;
-    bool startExoServiceCallback(std_srvs::SetBool::Request &req,
-                                 std_srvs::SetBool::Response &res);
 
     // vector of namespaces that holds the namespace of the robots in concern
     std::vector<std::string> nameSpaces_;

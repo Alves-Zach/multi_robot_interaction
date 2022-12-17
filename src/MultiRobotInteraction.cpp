@@ -31,10 +31,12 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
 
     interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
 
+    // interaction parameters in joint space rendering
     k_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
     c_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
     joint_neutral_length_ = Eigen::VectorXd::Zero(robotsDoF_);
 
+    // interaction parameters in task space rendering
     k_task_interaction_ = Eigen::VectorXd::Zero(2);
     c_task_interaction_ = Eigen::VectorXd::Zero(2);
     task_neutral_length_ = Eigen::VectorXd::Zero(2);
@@ -61,9 +63,6 @@ void MultiRobotInteraction::initialize() {
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig>::CallbackType f;
     f = boost::bind(&MultiRobotInteraction::dynReconfCallback, this, _1, _2);
     server_.setCallback(f);
-
-    startInteractionService_ = nodeHandle_.advertiseService("start_interaction", &MultiRobotInteraction::startExoServiceCallback, this);
-    startInteractionFlag_ = false;
 
     time0 = std::chrono::steady_clock::now(); // getting the time before program starts
     rosTime0_ = ros::Time::now();
@@ -146,10 +145,11 @@ void MultiRobotInteraction::advance() {
             }
 
             if(interaction_mode_ == 4){ // uni directional
+                // zero interaction to A
                 interactionEffortCommandMatrix_.col(0) = Eigen::VectorXd::Zero(robotsDoF_);
             }
         }
-
+        // if not feasible give 0 force
         if (!feasibleConditions) interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     }
     publishInteractionEffortCommand();
@@ -160,6 +160,7 @@ void MultiRobotInteraction::exit() {
 }
 
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id) {
+    // access each robots state
 
     for(int dof = 0; dof< robotsDoF_; dof++){
         jointPositionMatrix_(dof, robot_id) = msg->joint_state.position[dof];
@@ -171,22 +172,6 @@ void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr 
     backpackAngleVector_(robot_id) = msg->joint_state.position[robotsDoF_+1] + M_PI_2;
     backpackVelocityVector_(robot_id) = msg->joint_state.velocity[robotsDoF_+1];
     gaitStateVector_(robot_id) = msg->gait_state;
-}
-
-bool MultiRobotInteraction::startExoServiceCallback(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res) {
-
-    startInteractionFlag_ = req.data;
-
-    if(startInteractionFlag_){
-        ROS_INFO("Interaction started");
-        res.message = "Interaction started";
-    } else{
-        ROS_INFO("Interaction stopped");
-        res.message = "Interaction stopped";
-    }
-
-    res.success = true;
-    return true;
 }
 
 void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_paramsConfig &config, uint32_t level) {
@@ -226,6 +211,9 @@ void MultiRobotInteraction::publishInteractionEffortCommand() {
     for(int robot = 0; robot<numberOfRobots_; robot++){
         double time = std::chrono::duration_cast<std::chrono::milliseconds>
                               (std::chrono::steady_clock::now() - time0).count() / 1000.0; // time in seconds
+
+       // also publish the interaction properties so that it can be logged
+       // TODO, probably better to implement logger on this node as well, instead of sending this to robots for them to log
         interactionEffortCommandMsgs_[robot].custom_time = time;
         interactionEffortCommandMsgs_[robot].interaction_mode = interaction_mode_;
         interactionEffortCommandMsgs_[robot].desired_interaction.resize(robotsDoF_);
@@ -331,8 +319,5 @@ void MultiRobotInteraction::updateAnkleState() {
 
         leftAnkleVelocityMatrix_.col(robot) = leftAnkleJacobianInRightStance_[robot].middleCols(1, 2)*leftVel;
         rightAnkleVelocityMatrix_.col(robot) = rightAnkleJacobianInLeftStance_[robot].rightCols(2)*rightVel;
-
-
-
     }
 }

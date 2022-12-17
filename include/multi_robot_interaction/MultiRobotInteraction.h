@@ -22,6 +22,8 @@
 #include <std_srvs/SetBool.h>
 #include <sensor_msgs/JointState.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <CORC/X2RobotState.h>
+#include <CORC/InteractionArray.h>
 
 // dynamic reconfigure
 #include <dynamic_reconfigure/server.h>
@@ -46,21 +48,25 @@ private:
 
     bool startInteractionFlag_;
     int interaction_mode_;
-    Eigen::VectorXd k_interaction_; // stiffness of the interaction
-    Eigen::VectorXd c_interaction_; // damping constant of the interaction
-    Eigen::VectorXd neutral_length_; // neutral length of the spring
+    Eigen::VectorXd k_joint_interaction_; // stiffness of the interaction
+    Eigen::VectorXd c_joint_interaction_; // damping constant of the interaction
+    Eigen::VectorXd joint_neutral_length_; // neutral length of the spring
+
+    Eigen::VectorXd k_task_interaction_; // stiffness of the interaction at task space
+    Eigen::VectorXd c_task_interaction_; // damping constant of the interaction at task space
+    Eigen::VectorXd task_neutral_length_; // neutral length of the spring at task space
 
     //vector of subscribers to subscribe joint states of the robots
-    std::vector<ros::Subscriber> jointStateSubscribers_;
+    std::vector<ros::Subscriber> robotStateSubscribers_;
 
     //vectors of publishers and msgs to send joint position/velocity/torque & interaction effort commands
     std::vector<ros::Publisher> jointCommandPublishers_;
     std::vector<sensor_msgs::JointState> jointCommandMsgs_;
     std::vector<ros::Publisher> interactionEffortCommandPublishers_; // effort = either force or torque
-    std::vector<std_msgs::Float64MultiArray> interactionEffortCommandMsgs_;
+    std::vector<CORC::InteractionArray> interactionEffortCommandMsgs_;
 
     // joint state subscriber callback
-    void jointStateCallback(const sensor_msgs::JointStateConstPtr &msg, int robot_id);
+    void robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id);
 
     // dynamic reconfigure server and callback
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig> server_;
@@ -80,13 +86,23 @@ private:
     Eigen::MatrixXd jointVelocityMatrix_;
     Eigen::MatrixXd jointTorqueMatrix_;
 
-    Eigen::MatrixXd jointPositionCommandMatrix_; // each column corresponds to different robots
-    Eigen::MatrixXd jointVelocityCommandMatrix_;
-    Eigen::MatrixXd jointTorqueCommandMatrix_;
+    Eigen::MatrixXd leftAnklePositionMatrix_; // each column corresponds to different robots
+    Eigen::MatrixXd leftAnkleVelocityMatrix_; // wrt fixed frame on the stance akle. Makes sense only for the swing leg.
+    Eigen::MatrixXd rightAnklePositionMatrix_; // each column corresponds to different robots
+    Eigen::MatrixXd rightAnkleVelocityMatrix_; // wrt fixed frame on the stance akle. Makes sense only for the swing leg.
+
+    Eigen::VectorXd backpackAngleVector_, backpackVelocityVector_; // each column corresponds to different robots [rad, rad/s]
+    Eigen::VectorXd gaitStateVector_;
+
+    std::vector<Eigen::MatrixXd> leftAnkleJacobianInRightStance_; // each vector element represents different robot
+    std::vector<Eigen::MatrixXd> rightAnkleJacobianInLeftStance_;
+
+    Eigen::MatrixXd linkLengthsMatrix_;  // each column corresponds to different robots
 
     Eigen::MatrixXd interactionEffortCommandMatrix_;
 
     void publishInteractionEffortCommand();
+    void updateAnkleState();
 };
 
 #endif //SRC_LEGSCONTROLLER_H

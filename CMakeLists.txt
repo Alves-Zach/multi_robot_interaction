@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_srvs
   dynamic_reconfigure
+  CORC
 )
 
 ## Find system libraries
@@ -76,6 +77,7 @@ catkin_package(
     sensor_msgs
     std_srvs
     dynamic_reconfigure
+    CORC
 #  DEPENDS system_lib
 )
 

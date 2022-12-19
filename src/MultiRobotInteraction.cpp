@@ -21,10 +21,8 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
     leftAnkleVelocityMatrix_ = Eigen::MatrixXd::Zero(2, numberOfRobots_);
     rightAnklePositionMatrix_ = Eigen::MatrixXd::Zero(2, numberOfRobots_);
     rightAnkleVelocityMatrix_ = Eigen::MatrixXd::Zero(2, numberOfRobots_);
-    backpackAngleVector_ = M_PI_2*Eigen::VectorXd::Ones(numberOfRobots_);
-    backpackVelocityVector_ = Eigen::VectorXd::Zero(numberOfRobots_);
     gaitStateVector_ = 4*Eigen::VectorXd::Ones(numberOfRobots_); // set to 4(flying) initially
-    linkLengthsMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    linkLengthsMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_ - 1, numberOfRobots_);
 
     leftAnkleJacobianInRightStance_.resize(numberOfRobots_);
     rightAnkleJacobianInLeftStance_.resize(numberOfRobots_);
@@ -73,7 +71,8 @@ void MultiRobotInteraction::advance() {
     if (interaction_mode_ == 0) { // no interaction
         interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     } else if (interaction_mode_ == 1) { // bi-directional joint space
-        for (int dof = 0; dof < robotsDoF_; dof++) {
+        interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
+        for (int dof = 1; dof < robotsDoF_; dof++) {
             interactionEffortCommandMatrix_(dof, 0) =
                     k_joint_interaction_(dof) *
                     (jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - joint_neutral_length_(dof)) +
@@ -81,8 +80,8 @@ void MultiRobotInteraction::advance() {
             interactionEffortCommandMatrix_(dof, 1) = -interactionEffortCommandMatrix_(dof, 0);
         }
     } else if (interaction_mode_ == 2) { // uni-directional joint space
-        for (int dof = 0; dof < robotsDoF_; dof++) {
-            interactionEffortCommandMatrix_(dof, 0) = 0.0;
+        interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
+        for (int dof = 1; dof < robotsDoF_; dof++) {
             interactionEffortCommandMatrix_(dof, 1) =
                     k_joint_interaction_(dof) *
                     (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0) + joint_neutral_length_(dof)) +
@@ -130,18 +129,32 @@ void MultiRobotInteraction::advance() {
 
             interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
             if (stanceLeg == 2) { //right stance, left ankle control
-                interactionEffortCommandMatrix_.topLeftCorner(2,1) = // robot A
-                        leftAnkleJacobianInRightStance_[0].middleCols(1, 2).transpose()*desiredAnkleForce;
 
-                interactionEffortCommandMatrix_.topRightCorner(2, 1) = // robot B
-                        leftAnkleJacobianInRightStance_[1].middleCols(1, 2).transpose()*-desiredAnkleForce;
+                if(wholeExoCommand_){
+                    interactionEffortCommandMatrix_.col(0) = leftAnkleJacobianInRightStance_[0].transpose()*desiredAnkleForce; // robot A
+                    interactionEffortCommandMatrix_.col(1) = leftAnkleJacobianInRightStance_[1].transpose()*-desiredAnkleForce; // robot B
+
+                } else{
+                    interactionEffortCommandMatrix_.block<2, 1>(1,0) = // robot A
+                            leftAnkleJacobianInRightStance_[0].middleCols(1, 2).transpose()*desiredAnkleForce;
+
+                    interactionEffortCommandMatrix_.block<2, 1>(1,1) = // robot B
+                            leftAnkleJacobianInRightStance_[1].middleCols(1, 2).transpose()*-desiredAnkleForce;
+                }
 
             } else if(stanceLeg == 1){ //left stance, right ankle control
-                interactionEffortCommandMatrix_.bottomLeftCorner(2, 1) = // robot A
-                        rightAnkleJacobianInLeftStance_[0].rightCols(2).transpose()*desiredAnkleForce;
 
-                interactionEffortCommandMatrix_.bottomRightCorner(2, 1) = // robot A
-                        rightAnkleJacobianInLeftStance_[1].rightCols(2).transpose()*-desiredAnkleForce;
+                if(wholeExoCommand_){
+                    interactionEffortCommandMatrix_.col(0) = rightAnkleJacobianInLeftStance_[0].transpose()*desiredAnkleForce; // robot A
+                    interactionEffortCommandMatrix_.col(1) = rightAnkleJacobianInLeftStance_[1].transpose()*-desiredAnkleForce; // robot B
+
+                } else{
+                    interactionEffortCommandMatrix_.bottomLeftCorner(2, 1) = // robot A
+                            rightAnkleJacobianInLeftStance_[0].rightCols(2).transpose()*desiredAnkleForce;
+
+                    interactionEffortCommandMatrix_.bottomRightCorner(2, 1) = // robot A
+                            rightAnkleJacobianInLeftStance_[1].rightCols(2).transpose()*-desiredAnkleForce;
+                }
             }
 
             if(interaction_mode_ == 4){ // uni directional
@@ -161,16 +174,18 @@ void MultiRobotInteraction::exit() {
 
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id) {
     // access each robots state
-
-    for(int dof = 0; dof< robotsDoF_; dof++){
-        jointPositionMatrix_(dof, robot_id) = msg->joint_state.position[dof];
-        jointVelocityMatrix_(dof, robot_id) = msg->joint_state.velocity[dof];
-        jointTorqueMatrix_(dof, robot_id) = msg->joint_state.effort[dof];
+    for(int dof = 0; dof< robotsDoF_ - 1; dof++){
+        jointPositionMatrix_(dof+1, robot_id) = msg->joint_state.position[dof];
+        jointVelocityMatrix_(dof+1, robot_id) = msg->joint_state.velocity[dof];
+        jointTorqueMatrix_(dof+1, robot_id) = msg->joint_state.effort[dof];
 
         linkLengthsMatrix_(dof, robot_id) = msg->link_lengths[dof];
     }
-    backpackAngleVector_(robot_id) = msg->joint_state.position[robotsDoF_+1] + M_PI_2;
-    backpackVelocityVector_(robot_id) = msg->joint_state.velocity[robotsDoF_+1];
+
+    jointPositionMatrix_(0, robot_id) = msg->joint_state.position[robotsDoF_ - 1] + M_PI_2;
+    jointVelocityMatrix_(0, robot_id) = msg->joint_state.velocity[robotsDoF_ - 1];
+    jointTorqueMatrix_(0, robot_id) = msg->joint_state.effort[robotsDoF_ - 1];
+
     gaitStateVector_(robot_id) = msg->gait_state;
 }
 
@@ -182,12 +197,12 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
 
     interaction_mode_ = config.interaction_mode;
 
-    k_joint_interaction_(0) = config.stiffness_hip;
-    c_joint_interaction_(0) = config.damping_hip;
-    joint_neutral_length_(0) = deg2rad(config.neutral_length_hip);
-    k_joint_interaction_(1) = config.stiffness_knee;
-    c_joint_interaction_(1) = config.damping_knee;
-    joint_neutral_length_(1) = deg2rad(config.neutral_length_knee);
+    k_joint_interaction_(1) = config.stiffness_hip;
+    c_joint_interaction_(1) = config.damping_hip;
+    joint_neutral_length_(1) = deg2rad(config.neutral_length_hip);
+    k_joint_interaction_(2) = config.stiffness_knee;
+    c_joint_interaction_(2) = config.damping_knee;
+    joint_neutral_length_(2) = deg2rad(config.neutral_length_knee);
 
     k_task_interaction_(0) = config.stiffness_x;
     c_task_interaction_(0) = config.damping_x;
@@ -196,12 +211,14 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
     c_task_interaction_(1) = config.damping_y;
     task_neutral_length_(1) = config.neutral_length_y;
 
-    k_joint_interaction_(2) = k_joint_interaction_(0);
-    c_joint_interaction_(2) = c_joint_interaction_(0);
-    joint_neutral_length_(2) = joint_neutral_length_(0);
     k_joint_interaction_(3) = k_joint_interaction_(1);
     c_joint_interaction_(3) = c_joint_interaction_(1);
     joint_neutral_length_(3) = joint_neutral_length_(1);
+    k_joint_interaction_(4) = k_joint_interaction_(2);
+    c_joint_interaction_(4) = c_joint_interaction_(2);
+    joint_neutral_length_(4) = joint_neutral_length_(2);
+
+    wholeExoCommand_ = config.whole_exo;
 
     return;
 }
@@ -247,35 +264,40 @@ void MultiRobotInteraction::updateAnkleState() {
 
     for(int robot = 0; robot<numberOfRobots_; robot++){
 
-        double th_b = backpackAngleVector_(robot);
-        double th_1 = jointPositionMatrix_(0, robot); double th_2 = jointPositionMatrix_(1, robot);
-        double th_3 = jointPositionMatrix_(2, robot); double th_4 = jointPositionMatrix_(3, robot);
+        double th_b = jointPositionMatrix_(0, robot);
+        double th_1 = jointPositionMatrix_(1, robot); double th_2 = jointPositionMatrix_(2, robot);
+        double th_3 = jointPositionMatrix_(3, robot); double th_4 = jointPositionMatrix_(4, robot);
         double l_2 = linkLengthsMatrix_(0, robot); double l_3 = linkLengthsMatrix_(1, robot);
         double l_4 = linkLengthsMatrix_(2, robot); double l_5 = linkLengthsMatrix_(3, robot);
 
-        // these positions are wrt to the other fixed ankle. Makes sense only for the swing ankle
-//        leftAnklePositionMatrix_(0, robot) = //x
-//                l_4*cos(th_3 + th_b) - l_2*cos(th_1 + th_b) - l_3*cos(th_1 + th_2 + th_b) + l_5*cos(th_3 + th_4 + th_b);
-//        leftAnklePositionMatrix_(1, robot) = //y
-//                l_4*sin(th_3 + th_b) - l_2*sin(th_1 + th_b) - l_3*sin(th_1 + th_2 + th_b) + l_5*sin(th_3 + th_4 + th_b);
-//
-//        rightAnklePositionMatrix_(0, robot) = //x
-//                l_2*cos(th_1 + th_b) - l_4*cos(th_3 + th_b) + l_3*cos(th_1 + th_2 + th_b) - l_5*cos(th_3 + th_4 + th_b);
-//        rightAnklePositionMatrix_(1, robot) = //y
-//                l_2*sin(th_1 + th_b) - l_4*sin(th_3 + th_b) + l_3*sin(th_1 + th_2 + th_b) - l_5*sin(th_3 + th_4 + th_b);
+        if(wholeExoCommand_){
 
+         // these positions are wrt to the other fixed ankle. Makes sense only for the swing ankle
         leftAnklePositionMatrix_(0, robot) = //x
-                - l_2*cos(th_1 + th_b) - l_3*cos(th_1 + th_2 + th_b);
+                l_4*cos(th_3 + th_b) - l_2*cos(th_1 + th_b) - l_3*cos(th_1 + th_2 + th_b) + l_5*cos(th_3 + th_4 + th_b);
         leftAnklePositionMatrix_(1, robot) = //y
-                - l_2*sin(th_1 + th_b) - l_3*sin(th_1 + th_2 + th_b);
+                l_4*sin(th_3 + th_b) - l_2*sin(th_1 + th_b) - l_3*sin(th_1 + th_2 + th_b) + l_5*sin(th_3 + th_4 + th_b);
 
         rightAnklePositionMatrix_(0, robot) = //x
-                - l_4*cos(th_3 + th_b) - l_5*cos(th_3 + th_4 + th_b);
+                l_2*cos(th_1 + th_b) - l_4*cos(th_3 + th_b) + l_3*cos(th_1 + th_2 + th_b) - l_5*cos(th_3 + th_4 + th_b);
         rightAnklePositionMatrix_(1, robot) = //y
-                - l_4*sin(th_3 + th_b) - l_5*sin(th_3 + th_4 + th_b);
+                l_2*sin(th_1 + th_b) - l_4*sin(th_3 + th_b) + l_3*sin(th_1 + th_2 + th_b) - l_5*sin(th_3 + th_4 + th_b);
 
-        Eigen::MatrixXd tempLeftJac(2, robotsDoF_+1);
-        Eigen::MatrixXd tempRightJac(2, robotsDoF_+1);
+        } else {
+
+            leftAnklePositionMatrix_(0, robot) = //x
+                    -l_2 * cos(th_1 + th_b) - l_3 * cos(th_1 + th_2 + th_b);
+            leftAnklePositionMatrix_(1, robot) = //y
+                    -l_2 * sin(th_1 + th_b) - l_3 * sin(th_1 + th_2 + th_b);
+
+            rightAnklePositionMatrix_(0, robot) = //x
+                    -l_4 * cos(th_3 + th_b) - l_5 * cos(th_3 + th_4 + th_b);
+            rightAnklePositionMatrix_(1, robot) = //y
+                    -l_4 * sin(th_3 + th_b) - l_5 * sin(th_3 + th_4 + th_b);
+        }
+
+        Eigen::MatrixXd tempLeftJac(2, robotsDoF_);
+        Eigen::MatrixXd tempRightJac(2, robotsDoF_);
 
         tempLeftJac(0, 0) = l_2*sin(th_1+th_b)-l_4*sin(th_3+th_b)+l_3*sin(th_1+th_2+th_b)-l_5*sin(th_3+th_4+th_b);
         tempLeftJac(0, 1) = l_2*sin(th_1+th_b)+l_3*sin(th_1+th_2+th_b);
@@ -302,22 +324,27 @@ void MultiRobotInteraction::updateAnkleState() {
         leftAnkleJacobianInRightStance_[robot] = tempLeftJac;
         rightAnkleJacobianInLeftStance_[robot] = tempRightJac;
 
-        Eigen::VectorXd generalizedVel(robotsDoF_+1);
-        generalizedVel << backpackVelocityVector_(robot), jointVelocityMatrix_.col(robot);
 
         Eigen::VectorXd leftVel(2); Eigen::VectorXd rightVel(2);
         if(robot == 0){
-            leftVel = jointVelocityMatrix_.topLeftCorner(2,1);
+            leftVel = jointVelocityMatrix_.block<2, 1>(1, 0);
             rightVel = jointVelocityMatrix_.bottomLeftCorner(2,1);
         } else if(robot == 1){
-            leftVel = jointVelocityMatrix_.topRightCorner(2,1);
+            leftVel = jointVelocityMatrix_.block<2, 1>(1, 1);
             rightVel = jointVelocityMatrix_.bottomRightCorner(2,1);
         }
 
-//        leftAnkleVelocityMatrix_.col(robot) = leftAnkleJacobianInRightStance_[robot]*generalizedVel;
-//        rightAnkleVelocityMatrix_.col(robot) = rightAnkleJacobianInLeftStance_[robot]*generalizedVel;
+        // all joints
+        if(wholeExoCommand_) {
+            leftAnkleVelocityMatrix_.col(robot) =
+                    leftAnkleJacobianInRightStance_[robot] * jointVelocityMatrix_.col(robot);
+            rightAnkleVelocityMatrix_.col(robot) =
+                    rightAnkleJacobianInLeftStance_[robot] * jointVelocityMatrix_.col(robot);
+        }else {
 
-        leftAnkleVelocityMatrix_.col(robot) = leftAnkleJacobianInRightStance_[robot].middleCols(1, 2)*leftVel;
-        rightAnkleVelocityMatrix_.col(robot) = rightAnkleJacobianInLeftStance_[robot].rightCols(2)*rightVel;
+            // simplified only swing joints
+            leftAnkleVelocityMatrix_.col(robot) = leftAnkleJacobianInRightStance_[robot].middleCols(1, 2) * leftVel;
+            rightAnkleVelocityMatrix_.col(robot) = rightAnkleJacobianInLeftStance_[robot].rightCols(2) * rightVel;
+        }
     }
 }

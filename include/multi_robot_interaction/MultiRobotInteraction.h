@@ -85,7 +85,6 @@ private:
     Eigen::MatrixXd rightAnklePositionMatrix_; // each column corresponds to different robots
     Eigen::MatrixXd rightAnkleVelocityMatrix_; // wrt fixed frame on the stance akle. Makes sense only for the swing leg.
 
-    Eigen::VectorXd backpackAngleVector_, backpackVelocityVector_; // each column corresponds to different robots [rad, rad/s]
     Eigen::VectorXd gaitStateVector_;
 
     std::vector<Eigen::MatrixXd> leftAnkleJacobianInRightStance_; // each vector element represents different robot
@@ -97,6 +96,8 @@ private:
 
     void publishInteractionEffortCommand();
     void updateAnkleState();
+
+    bool wholeExoCommand_; // if true commands to all joint will be given in task space control, else only swing leg.
 };
 
 #endif //SRC_LEGSCONTROLLER_H

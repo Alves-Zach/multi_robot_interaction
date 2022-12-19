@@ -98,6 +98,8 @@ private:
     void updateAnkleState();
 
     bool wholeExoCommand_; // if true commands to all joint will be given in task space control, else only swing leg.
+
+    double stiffK_, softK_, stiffC_, softC_;
 };
 
 #endif //SRC_LEGSCONTROLLER_H

@@ -6,7 +6,9 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
     nodeHandle_(nodeHandle)
 {
     // gets the namespace parameters from the parameter server
-    if(!nodeHandle_.getParam("name_spaces", nameSpaces_) || !nodeHandle_.getParam("dof", robotsDoF_)){
+    if(!nodeHandle_.getParam("name_spaces", nameSpaces_) || !nodeHandle_.getParam("dof", robotsDoF_) ||
+       !nodeHandle_.getParam("soft_k", softK_) || !nodeHandle_.getParam("stiff_k", stiffK_)||
+       !nodeHandle_.getParam("soft_c", softC_) || !nodeHandle_.getParam("stiff_c", stiffC_)){
         ROS_ERROR("Failed to get parameter from server.");
         ROS_ERROR("Node is killed");
         ros::shutdown();
@@ -197,11 +199,30 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
 
     interaction_mode_ = config.interaction_mode;
 
-    k_joint_interaction_(1) = config.stiffness_hip;
-    c_joint_interaction_(1) = config.damping_hip;
+    int connectionMode = config.connection_mode;
+
+    if(connectionMode == 0){ // use slider
+        k_joint_interaction_(1) = config.stiffness_hip;
+        c_joint_interaction_(1) = config.damping_hip;
+
+        k_joint_interaction_(2) = config.stiffness_knee;
+        c_joint_interaction_(2) = config.damping_knee;
+
+    } else if(connectionMode == 1){ // soft
+        k_joint_interaction_(1) = softK_;
+        c_joint_interaction_(1) = softC_;
+
+        k_joint_interaction_(2) = softK_;
+        c_joint_interaction_(2) = softC_;
+    } else if(connectionMode == 2){ // stiff
+        k_joint_interaction_(1) = stiffK_;
+        c_joint_interaction_(1) = stiffC_;
+
+        k_joint_interaction_(2) = stiffK_;
+        c_joint_interaction_(2) = stiffC_;
+    }
+
     joint_neutral_length_(1) = deg2rad(config.neutral_length_hip);
-    k_joint_interaction_(2) = config.stiffness_knee;
-    c_joint_interaction_(2) = config.damping_knee;
     joint_neutral_length_(2) = deg2rad(config.neutral_length_knee);
 
     k_task_interaction_(0) = config.stiffness_x;

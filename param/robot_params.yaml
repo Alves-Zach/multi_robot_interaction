@@ -1,2 +1,6 @@
 name_spaces: ["X2_SRA_A", "X2_SRA_B"]
 dof: 5 # for now it is required that both robots have same DoF
+soft_k: 30
+soft_c: 4
+stiff_k: 70
+stiff_c: 10

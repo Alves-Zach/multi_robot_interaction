@@ -241,6 +241,9 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
 
     wholeExoCommand_ = config.whole_exo;
 
+    desiredXPos_ = config.desired_x;
+    desiredYPos_ = config.desired_y;
+
     return;
 }
 
@@ -276,6 +279,9 @@ void MultiRobotInteraction::publishInteractionEffortCommand() {
         }
         interactionEffortCommandMsgs_[robot].ankle_position.x = leftAnklePositionMatrix_(0, robot); //x
         interactionEffortCommandMsgs_[robot].ankle_position.y = leftAnklePositionMatrix_(1, robot); //y
+
+        interactionEffortCommandMsgs_[robot].desired_ankle_position.x = desiredXPos_; //x
+        interactionEffortCommandMsgs_[robot].desired_ankle_position.y = desiredYPos_; //y
 
         interactionEffortCommandPublishers_[robot].publish(interactionEffortCommandMsgs_[robot]);
     }

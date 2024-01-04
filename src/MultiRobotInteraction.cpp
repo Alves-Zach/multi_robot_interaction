@@ -70,6 +70,8 @@ void MultiRobotInteraction::initialize() {
 
 void MultiRobotInteraction::advance() {
 
+    updateAnkleState();
+
     if (interaction_mode_ == 0) { // no interaction
         interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
     } else if (interaction_mode_ == 1) { // bi-directional joint space
@@ -90,8 +92,6 @@ void MultiRobotInteraction::advance() {
                     c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
         }
     } else if (interaction_mode_ == 3 || interaction_mode_ == 4) { // bi/uni directional task space
-
-        updateAnkleState();
 
         int stanceLeg = -1;
         bool feasibleConditions = true; // if not feasible no interaction will be rendered

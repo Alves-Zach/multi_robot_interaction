@@ -58,6 +58,11 @@ void MultiRobotInteraction::initialize() {
         interactionEffortCommandPublishers_[i] = nodeHandle_.advertise<CORC::InteractionArray>
                 (interactionEffortCommandPublishersTopicName, 1);
     }
+    
+    // Define a subscriber to the IMU data
+    imuSubscriber_ = nodeHandle_.subscribe<sensor_msgs::JointState>("/imu_joint_states", 1,
+                                                            boost::bind(&MultiRobotInteraction::imuCallback,
+                                                                        this, _1));
 
     // set dynamic parameter server
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig>::CallbackType f;
@@ -70,103 +75,23 @@ void MultiRobotInteraction::initialize() {
 
 void MultiRobotInteraction::advance() {
 
-    updateAnkleState();
-
-    if (interaction_mode_ == 0) { // no interaction
-        interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-    } else if (interaction_mode_ == 1) { // bi-directional joint space
-        interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
-        for (int dof = 1; dof < robotsDoF_; dof++) {
-            interactionEffortCommandMatrix_(dof, 0) =
-                    k_joint_interaction_(dof) *
-                    (jointPositionMatrix_(dof, 0) - jointPositionMatrix_(dof, 1) - joint_neutral_length_(dof)) +
-                    c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 0) - jointVelocityMatrix_(dof, 1));
-            interactionEffortCommandMatrix_(dof, 1) = -interactionEffortCommandMatrix_(dof, 0);
-        }
-    } else if (interaction_mode_ == 2) { // uni-directional joint space
-        interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
-        for (int dof = 1; dof < robotsDoF_; dof++) {
-            interactionEffortCommandMatrix_(dof, 1) =
-                    k_joint_interaction_(dof) *
-                    (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0) + joint_neutral_length_(dof)) +
-                    c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
-        }
-    } else if (interaction_mode_ == 3 || interaction_mode_ == 4) { // bi/uni directional task space
-
-        int stanceLeg = -1;
-        bool feasibleConditions = true; // if not feasible no interaction will be rendered
-        if ((gaitStateVector_(0) != gaitStateVector_(1))) {
-            ROS_WARN("Task space interaction: Gait states are not same. Commanding zero interaction");
-            feasibleConditions = false;
-        } else { // same gait states
-            stanceLeg = gaitStateVector_(0); // 1 left stance (right ankle control), 2 right stance (left ankle control)
-            if (stanceLeg != 1 && stanceLeg != 2) {
-                ROS_WARN("Task space interaction: Not in single stance. Commanding zero interaction");
-                feasibleConditions = false;
-            }
-
-            Eigen::MatrixXd interestedAnklePositions(2, numberOfRobots_); // x and y directions for both robot for the ankle in interest
-            Eigen::MatrixXd interestedAnkleVelocities(2, numberOfRobots_); // x and y directions for both robot for the ankle in interest
-
-            if (stanceLeg == 2) { //right stance, left ankle control
-                for (int robot = 0; robot < numberOfRobots_; robot++) {
-                    interestedAnklePositions.col(robot) = leftAnklePositionMatrix_.col(robot);
-                    interestedAnkleVelocities.col(robot) = leftAnkleVelocityMatrix_.col(robot);
-                }
-            } else if (stanceLeg == 1) { //left stance, right ankle control
-                for (int robot = 0; robot < numberOfRobots_; robot++) {
-                    interestedAnklePositions.col(robot) = rightAnklePositionMatrix_.col(robot);
-                    interestedAnkleVelocities.col(robot) = rightAnkleVelocityMatrix_.col(robot);
-                }
-            }
-
-            Eigen::VectorXd desiredAnkleForce(2); // x and y calculated for robot A
-
-            for(int axes = 0; axes <2; axes++){ // x and y
-                double k, c, th0;
-                desiredAnkleForce(axes) =
-                k_task_interaction_(axes)*(interestedAnklePositions(axes, 0) - interestedAnklePositions(axes, 1) - task_neutral_length_(axes)) +
-                c_task_interaction_(axes)*(interestedAnkleVelocities(axes, 0) - interestedAnkleVelocities(axes, 1));
-            }
-
-            interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
-            if (stanceLeg == 2) { //right stance, left ankle control
-
-                if(wholeExoCommand_){
-                    interactionEffortCommandMatrix_.col(0) = leftAnkleJacobianInRightStance_[0].transpose()*desiredAnkleForce; // robot A
-                    interactionEffortCommandMatrix_.col(1) = leftAnkleJacobianInRightStance_[1].transpose()*-desiredAnkleForce; // robot B
-
-                } else{
-                    interactionEffortCommandMatrix_.block<2, 1>(1,0) = // robot A
-                            leftAnkleJacobianInRightStance_[0].middleCols(1, 2).transpose()*desiredAnkleForce;
-
-                    interactionEffortCommandMatrix_.block<2, 1>(1,1) = // robot B
-                            leftAnkleJacobianInRightStance_[1].middleCols(1, 2).transpose()*-desiredAnkleForce;
-                }
-
-            } else if(stanceLeg == 1){ //left stance, right ankle control
-
-                if(wholeExoCommand_){
-                    interactionEffortCommandMatrix_.col(0) = rightAnkleJacobianInLeftStance_[0].transpose()*desiredAnkleForce; // robot A
-                    interactionEffortCommandMatrix_.col(1) = rightAnkleJacobianInLeftStance_[1].transpose()*-desiredAnkleForce; // robot B
-
-                } else{
-                    interactionEffortCommandMatrix_.bottomLeftCorner(2, 1) = // robot A
-                            rightAnkleJacobianInLeftStance_[0].rightCols(2).transpose()*desiredAnkleForce;
-
-                    interactionEffortCommandMatrix_.bottomRightCorner(2, 1) = // robot A
-                            rightAnkleJacobianInLeftStance_[1].rightCols(2).transpose()*-desiredAnkleForce;
-                }
-            }
-
-            if(interaction_mode_ == 4){ // uni directional
-                // zero interaction to A
-                interactionEffortCommandMatrix_.col(0) = Eigen::VectorXd::Zero(robotsDoF_);
-            }
-        }
-        // if not feasible give 0 force
-        if (!feasibleConditions) interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
+    // updateAnkleState();
+    
+    // interaction effort command matrix
+    interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
+    for (int dof = 1; dof < robotsDoF_; dof++) {
+        interactionEffortCommandMatrix_(dof, 1) =
+                k_joint_interaction_(dof) *
+                (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
+                c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
+    interactionEffortCommandMatrix_(1, 1) = 0.0; // zero command to backpack
+    interactionEffortCommandMatrix_(2, 1) = 0.0; // zero command to backpack
+    interactionEffortCommandMatrix_(3, 1) = 0.0; // zero command to backpack
+
+    // Print out the interaction effort command matrix
+    std::cout << "Interaction Effort Command Matrix: " << std::endl << interactionEffortCommandMatrix_ << std::endl;
+
     publishInteractionEffortCommand();
 }
 
@@ -174,7 +99,22 @@ void MultiRobotInteraction::exit() {
 
 }
 
+void MultiRobotInteraction::imuCallback(const sensor_msgs::JointStateConstPtr &msg) {
+
+    // Order of joints is backpack, leftHip, leftKnee, rightHip, rightKnee
+    // Store the imu data into the jointPositionMatrix_
+    for (int dof = 0; dof < robotsDoF_ - 1; dof++) {
+        jointPositionMatrix_(dof+1, 0) = msg->position[dof];
+        jointVelocityMatrix_(dof+1, 0) = msg->velocity[dof];
+        jointTorqueMatrix_(dof+1, 0) = msg->effort[dof];
+    }
+
+    // Print the jointPositionMatrix_ to the console
+    // std::cout << "Joint Position Matrix: " << std::endl << jointPositionMatrix_ << std::endl;
+}
+
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id) {
+    robot_id = 1; // To ensure that the robot_id is always 0 regardless if robot is A or B
     // access each robots state
     for(int dof = 0; dof< robotsDoF_ - 1; dof++){
         jointPositionMatrix_(dof+1, robot_id) = msg->joint_state.position[dof];

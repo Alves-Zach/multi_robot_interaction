@@ -102,6 +102,12 @@ private:
     double stiffK_, softK_, stiffC_, softC_;
 
     double desiredXPos_, desiredYPos_;
+
+    // IMU joint state subscriber
+    ros::Subscriber imuSubscriber_;
+    
+    // IMU joint state callback
+    void imuCallback(const sensor_msgs::JointStateConstPtr &msg);
 };
 
 #endif //SRC_LEGSCONTROLLER_H

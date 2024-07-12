@@ -85,12 +85,12 @@ void MultiRobotInteraction::advance() {
                 (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
                 c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
-    interactionEffortCommandMatrix_(1, 1) = 0.0; // zero command to backpack
-    interactionEffortCommandMatrix_(2, 1) = 0.0; // zero command to backpack
-    interactionEffortCommandMatrix_(3, 1) = 0.0; // zero command to backpack
+    interactionEffortCommandMatrix_(1, 1) = 0.0; // zero command to left hip
+    interactionEffortCommandMatrix_(2, 1) = 0.0; // zero command to left knee
+    interactionEffortCommandMatrix_(3, 1) = 0.0; // zero command to right hip
 
     // Print out the interaction effort command matrix
-    std::cout << "Interaction Effort Command Matrix: " << std::endl << interactionEffortCommandMatrix_ << std::endl;
+    // std::cout << "Interaction Effort Command Matrix: " << std::endl << interactionEffortCommandMatrix_ << std::endl;
 
     publishInteractionEffortCommand();
 }
@@ -100,21 +100,18 @@ void MultiRobotInteraction::exit() {
 }
 
 void MultiRobotInteraction::imuCallback(const sensor_msgs::JointStateConstPtr &msg) {
-
     // Order of joints is backpack, leftHip, leftKnee, rightHip, rightKnee
-    // Store the imu data into the jointPositionMatrix_
+    // Store the imu data into the joint matricies
     for (int dof = 0; dof < robotsDoF_ - 1; dof++) {
         jointPositionMatrix_(dof+1, 0) = msg->position[dof];
         jointVelocityMatrix_(dof+1, 0) = msg->velocity[dof];
         jointTorqueMatrix_(dof+1, 0) = msg->effort[dof];
     }
-
-    // Print the jointPositionMatrix_ to the console
-    // std::cout << "Joint Position Matrix: " << std::endl << jointPositionMatrix_ << std::endl;
 }
 
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id) {
-    robot_id = 1; // To ensure that the robot_id is always 0 regardless if robot is A or B
+    robot_id = 1; // To ensure that the robot_id ios always 0 regardless if robot is A or B
+
     // access each robots state
     for(int dof = 0; dof< robotsDoF_ - 1; dof++){
         jointPositionMatrix_(dof+1, robot_id) = msg->joint_state.position[dof];
@@ -206,7 +203,7 @@ void MultiRobotInteraction::publishInteractionEffortCommand() {
         interactionEffortCommandMsgs_[robot].task_neutral_angle.resize(2);
 
         for(int dof = 0; dof<robotsDoF_; dof++){
-            interactionEffortCommandMsgs_[robot].desired_interaction[dof] = interactionEffortCommandMatrix_(dof, robot);
+            interactionEffortCommandMsgs_[robot].desired_interaction[dof] = interactionEffortCommandMatrix_(dof, 1);
             interactionEffortCommandMsgs_[robot].joint_stiffness[dof] = k_joint_interaction_(dof);
             interactionEffortCommandMsgs_[robot].joint_damping[dof] = c_joint_interaction_(dof);
             interactionEffortCommandMsgs_[robot].joint_neutral_angle[dof] = joint_neutral_length_(dof);

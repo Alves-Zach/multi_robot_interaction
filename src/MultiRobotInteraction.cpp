@@ -31,6 +31,22 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
 
     interactionEffortCommandMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_, numberOfRobots_);
 
+    // Initializing the joint and interaction matricies for one robot
+    // jointPositionMatrix = Eigen::MatrixXd::Zero(robotsDoF_, 1);
+    // jointVelocityMatrix = Eigen::MatrixXd::Zero(robotsDoF_, 1);
+    // jointTorqueMatrix = Eigen::MatrixXd::Zero(robotsDoF_, 1);
+    // leftAnklePositionMatrix_ = Eigen::MatrixXd::Zero(2, 1);
+    // leftAnkleVelocityMatrix_ = Eigen::MatrixXd::Zero(2, 1);
+    // rightAnklePositionMatrix_ = Eigen::MatrixXd::Zero(2, 1);
+    // rightAnkleVelocityMatrix_ = Eigen::MatrixXd::Zero(2, 1);
+    // gaitStateVector_ = 4*Eigen::VectorXd::Ones(1); // set to 4(flying) initially
+    // linkLengthsMatrix_ = Eigen::MatrixXd::Zero(robotsDoF_ - 1, 1);
+
+    // leftAnkleJacobianInRightStance.resize(1);
+    // rightAnkleJacobianInLeftStance.resize(1);
+
+    // interactionEffortCommandMatrix = Eigen::MatrixXd::Zero(robotsDoF_, 1);
+
     // interaction parameters in joint space rendering
     k_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
     c_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
@@ -47,6 +63,10 @@ void MultiRobotInteraction::initialize() {
     robotStateSubscribers_ = std::vector<ros::Subscriber>(numberOfRobots_);
     interactionEffortCommandPublishers_ = std::vector<ros::Publisher>(numberOfRobots_);
     interactionEffortCommandMsgs_ = std::vector<CORC::InteractionArray>(numberOfRobots_);
+
+    // Creating the publishers and subscribers for when one robot is used
+    // robotStateSubscriber = nodeHandle_.subscribe<CORC::X2RobotState>("/custom_robot_state", 1,
+    //                             boost::bind(&MultiRobotInteraction::robotStateCallback, this, _1, 0));
 
     // define the subscribers, publishers
     for(int i = 0; i< numberOfRobots_; i++){
@@ -85,12 +105,6 @@ void MultiRobotInteraction::advance() {
                 (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
                 c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
-    interactionEffortCommandMatrix_(1, 1) = 0.0; // zero command to left hip
-    interactionEffortCommandMatrix_(2, 1) = 0.0; // zero command to left knee
-    interactionEffortCommandMatrix_(3, 1) = 0.0; // zero command to right hip
-
-    // Print out the interaction effort command matrix
-    // std::cout << "Interaction Effort Command Matrix: " << std::endl << interactionEffortCommandMatrix_ << std::endl;
 
     publishInteractionEffortCommand();
 }

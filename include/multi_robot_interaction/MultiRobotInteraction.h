@@ -21,7 +21,7 @@
 // msg types
 #include <std_srvs/SetBool.h>
 #include <sensor_msgs/JointState.h>
-#include <std_msgs/Float64MultiArray.h>
+#include <std_msgs/Float32MultiArray.h>
 #include <CORC/X2RobotState.h>
 #include <CORC/InteractionArray.h>
 
@@ -50,9 +50,10 @@ private:
     Eigen::VectorXd k_joint_interaction_; // stiffness of the interaction
     Eigen::VectorXd c_joint_interaction_; // damping constant of the interaction
     Eigen::VectorXd joint_neutral_length_; // neutral length of the spring
+    Eigen::VectorXd emg_joint_interaction_; // EMG signal to control the interaction
 
     Eigen::VectorXd k_task_interaction_; // stiffness of the interaction at task space
-    Eigen::VectorXd c_task_interaction_; // damping constant of the interaction at task space
+    Eigen::VectorXd c_task_interaction_; //emg_joint_interaction_ damping constant of the interaction at task space
     Eigen::VectorXd task_neutral_length_; // neutral length of the spring at task space
 
     //vector of subscribers to subscribe joint states of the robots
@@ -105,9 +106,15 @@ private:
 
     // IMU joint state subscriber
     ros::Subscriber imuSubscriber_;
+
+    // Stiffness subscriber
+    ros::Subscriber stiffnessSubscriber_;
     
     // IMU joint state callback
     void imuCallback(const sensor_msgs::JointStateConstPtr &msg);
+
+    // Stiffness callback
+    void stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg);
 };
 
 #endif //SRC_LEGSCONTROLLER_H

@@ -49,6 +49,7 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
 
     // interaction parameters in joint space rendering
     k_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
+    emg_joint_interaction_ = Eigen::VectorXd::Zero(5);
     c_joint_interaction_ = Eigen::VectorXd::Zero(robotsDoF_);
     joint_neutral_length_ = Eigen::VectorXd::Zero(robotsDoF_);
 
@@ -84,6 +85,11 @@ void MultiRobotInteraction::initialize() {
                                                             boost::bind(&MultiRobotInteraction::imuCallback,
                                                                         this, _1));
 
+    // Define a subscriber to the stiffness data
+    stiffnessSubscriber_ = nodeHandle_.subscribe<std_msgs::Float32MultiArray>("/stiffness", 1,
+                                                            boost::bind(&MultiRobotInteraction::stiffnessCallback,
+                                                                        this, _1));
+
     // set dynamic parameter server
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig>::CallbackType f;
     f = boost::bind(&MultiRobotInteraction::dynReconfCallback, this, _1, _2);
@@ -101,7 +107,7 @@ void MultiRobotInteraction::advance() {
     interactionEffortCommandMatrix_(0, 0) = 0.0; // zero command to backpack
     for (int dof = 1; dof < robotsDoF_; dof++) {
         interactionEffortCommandMatrix_(dof, 1) =
-                k_joint_interaction_(dof) *
+                k_joint_interaction_(dof) * emg_joint_interaction_(dof) *
                 (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
                 c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
@@ -111,6 +117,27 @@ void MultiRobotInteraction::advance() {
 
 void MultiRobotInteraction::exit() {
 
+}
+
+void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg) {
+    // Set stiffness to 0 for the backpack
+    emg_joint_interaction_(0) = 0.0;
+
+    // Order of joints is leftHip, leftKnee, rightHip, rightKnee
+    for (int dof = 0; dof < 4; dof++) {
+        // Put the stiffness from the message into the emg interaction array
+        // Value comes in from 0-100
+        emg_joint_interaction_(dof+1) = msg->data[dof];
+
+        // Change the range from 0-100 to 0.0-2.0
+        emg_joint_interaction_(dof+1) *= 0.05;
+
+        // Offset the value to start at 0.5 so multipliers range from 0.5-2.5
+        emg_joint_interaction_(dof+1) += 0.5;
+    }
+
+    // Set the stiffness of the right knee = left hip for testing
+    emg_joint_interaction_(4) = emg_joint_interaction_(1);
 }
 
 void MultiRobotInteraction::imuCallback(const sensor_msgs::JointStateConstPtr &msg) {

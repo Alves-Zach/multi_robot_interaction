@@ -57,25 +57,34 @@ private:
     Eigen::VectorXd task_neutral_length_; // neutral length of the spring at task space
 
     //vector of subscribers to subscribe joint states of the robots
-    std::vector<ros::Subscriber> robotStateSubscribers_;
+    // std::vector<ros::Subscriber> robotStateSubscribers_;
+
+    // The robot state subscriber
+    ros::Subscriber exoRobotStateSubscriber;
+
+    // The desired interaction torque publisher
+    ros::Publisher interactionTorquePublisher;
 
     //vectors of publishers and msgs to send joint position/velocity/torque & interaction effort commands
-    std::vector<ros::Publisher> jointCommandPublishers_;
-    std::vector<sensor_msgs::JointState> jointCommandMsgs_;
-    std::vector<ros::Publisher> interactionEffortCommandPublishers_; // effort = either force or torque
-    std::vector<CORC::InteractionArray> interactionEffortCommandMsgs_;
+    // std::vector<ros::Publisher> jointCommandPublishers_;
+    // std::vector<sensor_msgs::JointState> jointCommandMsgs_;
+    // std::vector<ros::Publisher> interactionEffortCommandPublishers_; // effort = either force or torque
+    // std::vector<CORC::InteractionArray> interactionEffortCommandMsgs_;
+
+    // The interaction effort command message
+    CORC::InteractionArray interactionEffortCommandMsg;
 
     // joint state subscriber callback
-    void robotStateCallback(const CORC::X2RobotStateConstPtr &msg, int robot_id);
+    void robotStateCallback(const CORC::X2RobotStateConstPtr &msg);
 
     // dynamic reconfigure server and callback
     dynamic_reconfigure::Server<multi_robot_interaction::dynamic_paramsConfig> server_;
     void dynReconfCallback(multi_robot_interaction::dynamic_paramsConfig &config, uint32_t level);
+    bool mirrorInteraction_;
 
     // vector of namespaces that holds the namespace of the robots in concern
     std::vector<std::string> nameSpaces_;
     int robotsDoF_;
-    int numberOfRobots_;
 
     Eigen::MatrixXd jointPositionMatrix_; // each column corresponds to different robots
     Eigen::MatrixXd jointVelocityMatrix_;
@@ -115,6 +124,9 @@ private:
 
     // Stiffness callback
     void stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg);
+    
+    // If set to true, then EMG data will be used in controlling the stiffness
+    bool useEMG_;
 };
 
 #endif //SRC_LEGSCONTROLLER_H

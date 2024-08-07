@@ -78,11 +78,21 @@ void MultiRobotInteraction::advance() {
     // interaction effort command matrix
     interactionEffortCommandMatrix_(0) = 0.0; // zero command to backpack
     for (int dof = 1; dof < robotsDoF_; dof++) {
-        interactionEffortCommandMatrix_(dof) =
+        interactionEffortCommandMatrix_(dof, 1) =
                 k_joint_interaction_(dof) * emg_joint_interaction_(dof) *
                 (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
                 c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
+
+    // Setting both of the interaction effort command matrix to be the same
+    for (int dof = 0; dof < robotsDoF_; dof++){
+        interactionEffortCommandMatrix_(dof, 0) = interactionEffortCommandMatrix_(dof, 1);
+    }
+
+    // ROS_INFO_STREAM("Interaction forces: " << interactionEffortCommandMatrix_(4, 1));
+
+    // Print joint differences
+    // ROS_INFO_STREAM("Joint differences: " << (jointPositionMatrix_(4, 1) - jointPositionMatrix_(4, 0)));
 
     publishInteractionEffortCommand();
 }
@@ -92,9 +102,6 @@ void MultiRobotInteraction::exit() {
 }
 
 void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg) {
-    // Set stiffness to 0 for the backpack
-    emg_joint_interaction_(0) = 0.0;
-
     if (useEMG_) {
         ROS_INFO_STREAM("Using EMG data");
         // Order of joints is leftHip, leftKnee, rightHip, rightKnee
@@ -109,6 +116,10 @@ void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayC
             // Offset the value to start at 0.5 so multipliers range from 0.5-2.5
             emg_joint_interaction_(dof+1) += 0.5;
         }
+    } else{
+        for (int dof = 0; dof < 4; dof++) {
+            emg_joint_interaction_(dof+1) = 1.0;
+        }
     }
 }
 
@@ -122,33 +133,33 @@ void MultiRobotInteraction::imuCallback(const sensor_msgs::JointStateConstPtr &m
     }
 
     // If the state is mirrored, swap right and left joints
-    if (mirrorInteraction_) {
-        ROS_INFO_STREAM("Mirroring interaction");
+    // if (mirrorInteraction_) {
+    //     ROS_INFO_STREAM("Mirroring interaction");
 
-        jointPositionMatrix_(1, 0) = msg->position[3];
-        jointVelocityMatrix_(1, 0) = msg->velocity[3];
-        jointTorqueMatrix_(1, 0) = msg->effort[3];
+    //     jointPositionMatrix_(1, 0) = msg->position[3];
+    //     jointVelocityMatrix_(1, 0) = msg->velocity[3];
+    //     jointTorqueMatrix_(1, 0) = msg->effort[3];
 
-        jointPositionMatrix_(2, 0) = msg->position[4];
-        jointVelocityMatrix_(2, 0) = msg->velocity[4];
-        jointTorqueMatrix_(2, 0) = msg->effort[4];
+    //     jointPositionMatrix_(2, 0) = msg->position[4];
+    //     jointVelocityMatrix_(2, 0) = msg->velocity[4];
+    //     jointTorqueMatrix_(2, 0) = msg->effort[4];
 
-        jointPositionMatrix_(3, 0) = msg->position[1];
-        jointVelocityMatrix_(3, 0) = msg->velocity[1];
-        jointTorqueMatrix_(3, 0) = msg->effort[1];
+    //     jointPositionMatrix_(3, 0) = msg->position[1];
+    //     jointVelocityMatrix_(3, 0) = msg->velocity[1];
+    //     jointTorqueMatrix_(3, 0) = msg->effort[1];
 
-        jointPositionMatrix_(4, 0) = msg->position[2];
-        jointVelocityMatrix_(4, 0) = msg->velocity[2];
-        jointTorqueMatrix_(4, 0) = msg->effort[2];
-    }
+    //     jointPositionMatrix_(4, 0) = msg->position[2];
+    //     jointVelocityMatrix_(4, 0) = msg->velocity[2];
+    //     jointTorqueMatrix_(4, 0) = msg->effort[2];
+    // }
 }
 
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg) {
     // access each robots state
     for(int dof = 0; dof< robotsDoF_ - 1; dof++){
-        jointPositionMatrix_(dof+1) = msg->joint_state.position[dof];
-        jointVelocityMatrix_(dof+1) = msg->joint_state.velocity[dof];
-        jointTorqueMatrix_(dof+1) = msg->joint_state.effort[dof];
+        jointPositionMatrix_(dof+1, 1) = msg->joint_state.position[dof];
+        jointVelocityMatrix_(dof+1, 1) = msg->joint_state.velocity[dof];
+        jointTorqueMatrix_(dof+1, 1) = msg->joint_state.effort[dof];
 
         linkLengthsMatrix_(dof) = msg->link_lengths[dof];
     }
@@ -166,7 +177,7 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
         ROS_INFO_STREAM("MODE IS CHANGED TO: "<< config.interaction_mode);
     }
 
-    useEMG_ = config.use_emg;
+    useEMG_ = config.use_EMG;
 
     interaction_mode_ = config.interaction_mode;
 

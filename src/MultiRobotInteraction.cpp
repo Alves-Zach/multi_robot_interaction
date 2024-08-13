@@ -103,7 +103,6 @@ void MultiRobotInteraction::exit() {
 
 void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg) {
     if (useEMG_) {
-        ROS_INFO_STREAM("Using EMG data");
         // Order of joints is leftHip, leftKnee, rightHip, rightKnee
         for (int dof = 0; dof < 4; dof++) {
             // Put the stiffness from the message into the emg interaction array
@@ -133,25 +132,23 @@ void MultiRobotInteraction::imuCallback(const sensor_msgs::JointStateConstPtr &m
     }
 
     // If the state is mirrored, swap right and left joints
-    // if (mirrorInteraction_) {
-    //     ROS_INFO_STREAM("Mirroring interaction");
+    if (mirrorInteraction_) {
+        jointPositionMatrix_(1, 0) = msg->position[2];
+        jointVelocityMatrix_(1, 0) = msg->velocity[2];
+        jointTorqueMatrix_(1, 0) = msg->effort[2];
 
-    //     jointPositionMatrix_(1, 0) = msg->position[3];
-    //     jointVelocityMatrix_(1, 0) = msg->velocity[3];
-    //     jointTorqueMatrix_(1, 0) = msg->effort[3];
+        jointPositionMatrix_(2, 0) = msg->position[3];
+        jointVelocityMatrix_(2, 0) = msg->velocity[3];
+        jointTorqueMatrix_(2, 0) = msg->effort[3];
 
-    //     jointPositionMatrix_(2, 0) = msg->position[4];
-    //     jointVelocityMatrix_(2, 0) = msg->velocity[4];
-    //     jointTorqueMatrix_(2, 0) = msg->effort[4];
+        jointPositionMatrix_(3, 0) = msg->position[0];
+        jointVelocityMatrix_(3, 0) = msg->velocity[0];
+        jointTorqueMatrix_(3, 0) = msg->effort[0];
 
-    //     jointPositionMatrix_(3, 0) = msg->position[1];
-    //     jointVelocityMatrix_(3, 0) = msg->velocity[1];
-    //     jointTorqueMatrix_(3, 0) = msg->effort[1];
-
-    //     jointPositionMatrix_(4, 0) = msg->position[2];
-    //     jointVelocityMatrix_(4, 0) = msg->velocity[2];
-    //     jointTorqueMatrix_(4, 0) = msg->effort[2];
-    // }
+        jointPositionMatrix_(4, 0) = msg->position[1];
+        jointVelocityMatrix_(4, 0) = msg->velocity[1];
+        jointTorqueMatrix_(4, 0) = msg->effort[1];
+    }
 }
 
 void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr &msg) {

@@ -127,6 +127,10 @@ private:
     
     // If set to true, then EMG data will be used in controlling the stiffness
     bool useEMG_;
+
+    // Two arrays to store the max and min multiplier values for the stiffness
+    Eigen::VectorXd maxMultiplier_;
+    Eigen::VectorXd minMultiplier_;
 };
 
 #endif //SRC_LEGSCONTROLLER_H

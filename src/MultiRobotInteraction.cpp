@@ -37,6 +37,10 @@ MultiRobotInteraction::MultiRobotInteraction(ros::NodeHandle &nodeHandle):
     k_task_interaction_ = Eigen::VectorXd::Zero(2);
     c_task_interaction_ = Eigen::VectorXd::Zero(2);
     task_neutral_length_ = Eigen::VectorXd::Zero(2);
+
+    // Min and max multipliers for EMG
+    minMultiplier_ = Eigen::VectorXd::Zero(4);
+    maxMultiplier_ = Eigen::VectorXd::Zero(4);
 }
 
 void MultiRobotInteraction::initialize() {
@@ -83,8 +87,6 @@ void MultiRobotInteraction::advance() {
                 (jointPositionMatrix_(dof, 1) - jointPositionMatrix_(dof, 0)) +
                 c_joint_interaction_(dof) * (jointVelocityMatrix_(dof, 1) - jointVelocityMatrix_(dof, 0));
     }
-    // ROS_INFO_STREAM("k joint interaction: " << (k_joint_interaction_(1)));
-    // ROS_INFO_STREAM("emg joint interaction: " << (emg_joint_interaction_(1)));
 
     // If the interaction mode is 0, set interaction effort matrix to 0s
     if (interaction_mode_ == 0) {
@@ -107,6 +109,7 @@ void MultiRobotInteraction::exit() {
 }
 
 void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayConstPtr &msg) {
+    // Checking if the useEMG_ flag is set
     if (useEMG_) {
         // Order of joints is leftHip, leftKnee, rightHip, rightKnee
         for (int dof = 0; dof < 4; dof++) {
@@ -115,12 +118,12 @@ void MultiRobotInteraction::stiffnessCallback(const std_msgs::Float32MultiArrayC
             emg_joint_interaction_(dof+1) = msg->data[dof];
 
             // Change the range from 0-100 to 0.0-2.0
-            emg_joint_interaction_(dof+1) *= 0.05;
+            emg_joint_interaction_(dof+1) *= 1 / (maxMultiplier_[dof] * 10);
 
             // Offset the value to start at 0.5 so multipliers range from 0.5-2.5
-            emg_joint_interaction_(dof+1) += 0.5;
+            emg_joint_interaction_(dof+1) += minMultiplier_[dof];
         }
-    } else{
+    } else{ // If not using EMG, set the interaction to 1.0
         for (int dof = 0; dof < 4; dof++) {
             emg_joint_interaction_(dof+1) = 1.0;
         }
@@ -179,12 +182,26 @@ void MultiRobotInteraction::robotStateCallback(const CORC::X2RobotStateConstPtr 
 }
 
 void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_paramsConfig &config, uint32_t level) {
-
+    // Check if the interaction mode has changed
     if(interaction_mode_ != config.interaction_mode){
         ROS_INFO_STREAM("MODE IS CHANGED TO: "<< config.interaction_mode);
     }
 
+    // Setting the EMG usage
     useEMG_ = config.use_EMG;
+
+    // Setting the EMG multipliers
+    maxMultiplier_[0] = config.multiplier_left_hip_max;
+    minMultiplier_[0] = config.multiplier_left_hip_min;
+
+    maxMultiplier_[1] = config.multiplier_left_knee_max;
+    minMultiplier_[1] = config.multiplier_left_knee_min;
+
+    maxMultiplier_[2] = config.multiplier_right_hip_max;
+    minMultiplier_[2] = config.multiplier_right_hip_min;
+
+    maxMultiplier_[3] = config.multiplier_right_knee_max;
+    minMultiplier_[3] = config.multiplier_right_knee_min;
 
     // Failsafe to make the emg multiplier 1.0 if not using EMG
     if (!useEMG_) {
@@ -193,30 +210,30 @@ void MultiRobotInteraction::dynReconfCallback(multi_robot_interaction::dynamic_p
         }
     }
 
+    // Setting the interaction mode
     interaction_mode_ = config.interaction_mode;
 
-    int connectionMode = config.connection_mode;
-
-    if(connectionMode == 0){ // use slider
+    // Making sure the stiffness is set based on the slider mode
+    if(config.connection_mode == 0){ // use slider
         k_joint_interaction_(1) = config.stiffness_hip;
         c_joint_interaction_(1) = config.damping_hip;
 
         k_joint_interaction_(2) = config.stiffness_knee;
         c_joint_interaction_(2) = config.damping_knee;
 
-    } else if(connectionMode == 1){ // soft
+    } else if(config.connection_mode == 1){ // soft
         k_joint_interaction_(1) = softK_;
         c_joint_interaction_(1) = softC_;
 
         k_joint_interaction_(2) = softK_;
         c_joint_interaction_(2) = softC_;
-    } else if(connectionMode == 2){ // stiff
+    } else if(config.connection_mode == 2){ // stiff
         k_joint_interaction_(1) = stiffK_;
         c_joint_interaction_(1) = stiffC_;
 
         k_joint_interaction_(2) = stiffK_;
         c_joint_interaction_(2) = stiffC_;
-    } else if(connectionMode == 3){ // Both
+    } else if(config.connection_mode == 3){ // Both
         k_joint_interaction_(1) = config.stiffness_both;
         c_joint_interaction_(1) = config.damping_both;
 
